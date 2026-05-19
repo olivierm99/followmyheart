@@ -482,6 +482,7 @@ function typeChars(container,text,speed,noTypo,onDone){
     var c=chars[i];
     var bd;
     if(speed==="instant"){bd=6+Math.random()*4;}
+    else if(speed==="slow"){bd=c===" "?120+Math.random()*40:(c==="."||c==="?"||c===","||c==="\u2026")?250+Math.random()*80:70+Math.random()*50;}
     else{bd=c===" "?35+Math.random()*15:(c==="."||c==="?"||c===","||c==="\u2026")?80+Math.random()*30:20+Math.random()*18;}
     var isTypo=false;
     for(var j=0;j<typoPositions.length;j++)if(typoPositions[j]===i){isTypo=true;break;}
@@ -590,7 +591,10 @@ function drawGraph(data){
   var minBpm=44,maxBpm=130,nowH=NOW_HOUR||14;
   var gH=90,padL=38,padR=12,padT=10,padB=28;
   GRAPH_W=Math.max(80,W<700?Math.round(W*0.96):Math.round(W*0.60));
-  hg.style.width=GRAPH_W+"px";hg.width=GRAPH_W;hg.height=gH;
+  var dpr=window.devicePixelRatio||1;
+  hg.style.width=GRAPH_W+"px";hg.style.height=gH+"px";
+  hg.width=GRAPH_W*dpr;hg.height=gH*dpr;
+  gCtx.scale(dpr,dpr);
   gCtx.clearRect(0,0,GRAPH_W,gH);
   var chartW=GRAPH_W-padL-padR,chartH=gH-padT-padB;
   function xP(t){return padL+(t/nowH)*chartW;}
@@ -701,7 +705,7 @@ function runEggLines(idx){
     el("eggText").textContent="";
     el("eggText").style.opacity="1";
     el("eggText").style.transition="";
-    typeChars(el("eggText"),line.text,"human",true,function(){
+    typeChars(el("eggText"),line.text,"slow",true,function(){
       if(line.isLast){
         setTimeout(function(){runEggLines(idx+1);},line.pause||200);
       } else {
@@ -731,7 +735,7 @@ el("ynField").addEventListener("input",function(){
     el("eggText").textContent="";
     el("eggText").style.opacity="1";
     el("eggText").style.transition="";
-    typeChars(el("eggText"),T().noMsg,"human",true,function(){
+    typeChars(el("eggText"),T().noMsg,"slow",true,function(){
       setTimeout(function(){
         el("eggLayer").classList.remove("on");
         el("eggText").textContent="";
