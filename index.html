@@ -1,0 +1,924 @@
+function scheduler(){
+  if(!audioCtx) return;
+  while(nextBeatTime<audioCtx.currentTime+0.15){
+    scheduleBeat(nextBeatTime);
+    nextBeatTime+=60.0/activeBpm;
+  }
+  schedHandle=setTimeout(scheduler,25);
+}<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Follow My Heart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#0d0308;font-family:"Space Mono",monospace;overflow:hidden;cursor:default;user-select:none;}
+
+#bgVideo{position:fixed;top:0;left:0;width:100%;height:calc(100% - 120px);object-fit:contain;background:#000;z-index:0;opacity:0;transition:opacity 1.5s;min-height:200px;}
+#bgVideo.on{opacity:1;}
+#warmGlow{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 55% 55% at 50% 48%,rgba(80,8,20,0.45) 0%,rgba(40,4,12,0.3) 35%,rgba(15,2,6,0.15) 60%,transparent 80%);}
+#vignette{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse 70% 65% at 50% 50%,transparent 0%,transparent 22%,rgba(0,0,0,0.35) 52%,rgba(0,0,0,0.85) 100%);}
+
+.screen{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.9s;}
+.screen.hidden{opacity:0;pointer-events:none;}
+
+#langPicker{position:fixed;inset:0;z-index:9999;background:#0d0308;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;}
+.lang-opt{font-family:"Space Mono",monospace;font-size:14px;color:rgba(215,215,215,0.72);letter-spacing:5px;text-transform:uppercase;background:none;border:none;cursor:pointer;padding:12px 28px;-webkit-tap-highlight-color:transparent;transition:color 0.2s;}
+.lang-opt:hover{color:#fff;}
+#langSep{font-size:10px;color:rgba(150,150,150,0.22);letter-spacing:4px;}
+
+#nav{position:fixed;top:18px;right:20px;z-index:30;display:flex;gap:22px;align-items:center;opacity:0;pointer-events:none;transition:opacity 0.8s;}
+#nav.on{opacity:1;pointer-events:all;}
+#nav a{font-family:"Space Mono",monospace;font-size:11px;color:rgba(220,180,140,0.65);letter-spacing:2px;text-transform:uppercase;text-decoration:none;cursor:pointer;transition:color 0.3s;}
+#nav a:hover{color:rgba(220,140,180,0.9);}
+
+#sndBtn{font-size:13px;background:none;border:1px solid rgba(255,255,255,0.28);cursor:pointer;opacity:0;line-height:1;padding:4px 7px;transition:opacity 0.8s,border-color 0.3s;pointer-events:none;color:rgba(255,255,255,0.7);border-radius:0;vertical-align:middle;}
+#sndBtn.on{opacity:1;pointer-events:all;}
+#sndBtn:hover{border-color:rgba(255,255,255,0.6);}
+
+/* BPM panel — right-aligned to graph width */
+#bpmPanel{position:fixed;bottom:22px;z-index:13;opacity:0;transition:opacity 1s;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+#bpmPanel.on{opacity:1;}
+#bpmLabel{font-size:7px;color:rgba(220,180,140,0.65);letter-spacing:3px;text-transform:uppercase;}
+#bpmRowEl{display:flex;align-items:center;gap:6px;}
+#bpmHeart{font-size:14px;line-height:1;color:rgba(220,160,100,0.85);}
+#bpmNum{font-size:48px;line-height:1;font-family:"Space Mono",monospace;color:rgba(220,160,100,0.9);letter-spacing:-2px;text-shadow:0 0 30px rgba(200,80,80,0.4);}
+#bpmState{font-size:8px;color:rgba(220,180,140,0.65);letter-spacing:3px;text-transform:uppercase;}
+
+#s1Frost{position:absolute;inset:0;background:rgba(0,0,0,0.5);pointer-events:none;transition:opacity 0.9s;}
+#introWrap{position:relative;z-index:1;max-width:620px;width:92%;display:flex;flex-direction:column;align-items:flex-start;text-align:left;transition:opacity 0.8s;}
+#introLines{display:flex;flex-direction:column;align-items:flex-start;width:100%;}
+.iline{font-size:13px;color:rgba(225,225,225,0.88);letter-spacing:1.2px;line-height:1.3;text-align:left;padding:6px 0;display:block;min-height:20px;text-shadow:0 1px 12px rgba(0,0,0,0.95),0 0 30px rgba(0,0,0,0.9);white-space:normal;}
+.iline.quote{font-size:15px;color:rgba(255,255,255,0.97);letter-spacing:1.8px;padding:10px 0 14px 0;text-align:left;text-shadow:0 1px 16px rgba(0,0,0,1),0 0 40px rgba(0,0,0,0.95);white-space:normal;}
+.iline.gap{min-height:12px;padding:6px 0;}
+.bcursor{display:inline-block;width:1.5px;height:13px;background:rgba(210,210,210,0.65);margin-left:1px;vertical-align:middle;}
+.bcursor.blink{animation:bl 0.52s infinite;}
+@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+#enterBtn{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:"Space Mono",monospace;font-size:15px;color:rgba(255,255,255,0.9);letter-spacing:4px;background:none;border:none;cursor:pointer;opacity:0;transition:opacity 0.9s,color 0.3s;white-space:nowrap;pointer-events:none;text-shadow:0 0 20px rgba(0,0,0,1);}
+#enterBtn.on{opacity:1;pointer-events:all;}
+#enterBtn:hover{color:rgba(210,120,80,0.92);}
+
+#graphArea{position:fixed;bottom:0;left:50%;transform:translateX(-50%);z-index:12;display:flex;flex-direction:column;align-items:flex-start;gap:5px;opacity:0;transition:opacity 1.5s;pointer-events:none;}
+#graphArea.on{opacity:1;pointer-events:all;}
+#subjectLabel{font-size:8px;color:rgba(230,195,160,0.88);letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;}
+#heartGraph{display:block;}
+
+/* EGG */
+#eggLayer{position:fixed;inset:0;z-index:25;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;opacity:0;pointer-events:none;transition:opacity 0.7s;}
+#eggLayer.on{opacity:1;pointer-events:all;}
+#eggText{font-size:13px;color:rgba(255,255,255,0.95);letter-spacing:1.8px;text-align:center;line-height:1.6;text-shadow:0 0 40px rgba(0,0,0,1),0 0 20px rgba(0,0,0,1),0 2px 12px rgba(0,0,0,1);white-space:normal;}
+#eggInputWrap{display:none;flex-direction:column;align-items:center;gap:16px;background:rgba(0,0,0,0.75);padding:22px 36px;backdrop-filter:blur(4px);}
+#eggInputWrap.on{display:flex;}
+#ynPromptTxt{display:none;}
+#ynRow{display:flex;align-items:center;gap:6px;border-bottom:1px solid rgba(210,210,210,0.28);padding-bottom:5px;}
+#ynField{background:transparent;border:none;color:rgba(255,255,255,0.95);font-family:"Space Mono",monospace;font-size:24px;letter-spacing:6px;width:44px;text-align:center;outline:none;padding:4px 0;text-transform:uppercase;caret-color:transparent;}
+#ynCursorEl{display:inline-block;width:2px;height:24px;background:rgba(220,220,220,0.72);animation:bl 0.52s infinite;vertical-align:middle;}
+#ynHintTxt{font-size:11px;color:rgba(210,210,210,0.72);letter-spacing:3px;}
+
+/* Follow your wrap */
+#followYourWrap{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:26;opacity:0;pointer-events:none;transition:opacity 0.7s;text-align:center;white-space:nowrap;}
+#followYourWrap.on{opacity:1;}
+#followYourText{font-size:16px;color:rgba(255,255,255,0.92);letter-spacing:4px;font-family:"Space Mono",monospace;text-shadow:0 0 30px rgba(0,0,0,1);}
+#followYourText em{font-style:italic;text-decoration:underline;text-underline-offset:4px;color:rgba(220,140,180,0.95);}
+
+/* S3 */
+#s3Panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:440px;display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center;opacity:0;pointer-events:none;transition:opacity 0.8s;z-index:15;}
+#s3Panel.on{opacity:1;pointer-events:all;}
+#s3Intro{font-size:12px;color:rgba(215,215,215,0.88);letter-spacing:1.6px;line-height:2.6;text-shadow:0 0 40px rgba(0,0,0,1),0 2px 10px rgba(0,0,0,1);}
+.cbtn{font-family:"Space Mono",monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(230,230,230,0.82);background:none;border:1px solid rgba(200,200,200,0.35);padding:12px 0;cursor:pointer;width:240px;transition:color 0.3s,border-color 0.3s,background 0.3s;}
+.cbtn:hover{color:#fff;border-color:rgba(220,160,120,0.6);background:rgba(220,120,80,0.08);}
+#anonWrap{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;}
+#anonField{background:rgba(255,255,255,0.04);border:1px solid rgba(200,200,200,0.25);color:rgba(220,220,220,0.88);font-family:"Space Mono",monospace;font-size:9px;letter-spacing:1.2px;width:100%;max-width:340px;outline:none;padding:12px 14px;resize:none;line-height:1.8;transition:border-color 0.3s,box-shadow 0.3s;}
+#anonField:focus{border-color:rgba(220,140,80,0.5);box-shadow:0 0 14px rgba(220,120,80,0.18),0 0 4px rgba(200,80,120,0.12);}
+#anonField::placeholder{color:rgba(200,200,200,0.45);}
+#anonSubmit{font-family:"Space Mono",monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(210,210,210,0.65);background:none;border:1px solid rgba(180,180,180,0.25);cursor:pointer;transition:color 0.3s,border-color 0.3s;padding:8px 20px;}
+#anonSubmit:hover{color:rgba(230,230,230,0.95);border-color:rgba(200,200,200,0.45);}
+#anonMsg{font-size:8px;color:rgba(180,180,180,0.5);letter-spacing:1.5px;min-height:14px;}
+#s3Back{font-family:"Space Mono",monospace;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(160,160,160,0.45);background:none;border:none;cursor:pointer;transition:color 0.3s;margin-top:4px;}
+#s3Back:hover{color:rgba(210,210,210,0.85);}
+
+/* Oura panel */
+#ouraPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;opacity:0;pointer-events:none;transition:opacity 0.8s;z-index:15;}
+#ouraPanel.on{opacity:1;pointer-events:all;}
+#ouraInstructions{font-size:11px;color:rgba(210,210,210,0.82);letter-spacing:1.5px;line-height:2.6;white-space:pre-line;text-shadow:0 0 30px rgba(0,0,0,1);}
+#tokenField{background:transparent;border:none;border-bottom:1px solid rgba(180,180,180,0.3);color:rgba(200,200,200,0.9);font-family:"Space Mono",monospace;font-size:9px;letter-spacing:1.5px;width:280px;text-align:center;outline:none;padding:8px 0;}
+#tokenField::placeholder{color:rgba(140,140,140,0.4);}
+#tokenBtns{display:flex;gap:24px;}
+#tokenSubmit,#tokenCancel,#ouraBack{font-family:"Space Mono",monospace;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(180,180,180,0.52);background:none;border:none;cursor:pointer;transition:color 0.3s;}
+#tokenSubmit{border-bottom:1px solid rgba(180,180,180,0.2);padding-bottom:3px;}
+#tokenSubmit:hover,#tokenCancel:hover,#ouraBack:hover{color:rgba(230,230,230,0.9);}
+#ouraPriv{font-size:8px;font-style:italic;color:rgba(170,170,170,0.55);letter-spacing:0.8px;line-height:2.2;white-space:pre-line;max-width:360px;}
+#tokenError{font-size:8px;color:rgba(200,80,80,0.75);letter-spacing:1.5px;min-height:14px;}
+
+#transMsg{position:fixed;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.9s;}
+#transMsg.on{opacity:1;}
+#transTxt{font-size:10px;color:rgba(200,200,200,0.52);letter-spacing:2.5px;text-shadow:0 0 30px rgba(0,0,0,1);}
+
+#about,#contact{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:3rem;opacity:0;pointer-events:none;transition:opacity 0.8s;}
+#about.on,#contact.on{opacity:1;pointer-events:all;}
+.page-title{font-size:13px;background:linear-gradient(90deg,rgba(220,160,80,0.9),rgba(200,50,80,0.9),rgba(180,60,200,0.85));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:3px;}
+.page-text{font-size:12px;color:rgba(205,205,205,0.78);letter-spacing:1.4px;line-height:2.8;text-align:center;max-width:480px;white-space:pre-line;}
+.page-q{font-size:14px;color:rgba(225,225,225,0.88);letter-spacing:2px;}
+.page-email{font-size:11px;color:rgba(200,80,80,0.82);letter-spacing:1.5px;text-decoration:none;border-bottom:1px solid rgba(150,40,40,0.25);padding-bottom:3px;transition:color 0.3s;}
+.page-email:hover{color:rgba(220,70,70,0.95);}
+.page-close{font-family:"Space Mono",monospace;font-size:9px;color:rgba(180,180,180,0.52);letter-spacing:2px;text-transform:uppercase;background:none;border:none;cursor:pointer;transition:color 0.3s;}
+.page-close:hover{color:rgba(210,210,210,0.82);}
+
+@media(min-width:700px){
+  .iline{white-space:nowrap;}
+  .iline.quote{white-space:nowrap;}
+  #eggText{white-space:nowrap;}
+}
+
+@media(max-width:699px){
+  #introWrap{padding:0 20px;}
+  .iline{font-size:12px;letter-spacing:0.8px;padding:5px 0;}
+  .iline.quote{font-size:13px;letter-spacing:1.2px;}
+  #eggText{font-size:12px;letter-spacing:1.2px;padding:0 20px;}
+  #subjectLabel{white-space:normal;font-size:9px;letter-spacing:1px;line-height:1.8;max-width:calc(100vw - 48px);}
+  #bpmPanel{right:8px;bottom:130px;}
+  #bpmNum{font-size:42px;}
+  #bpmLabel{font-size:8px;letter-spacing:2px;}
+  #bpmState{font-size:9px;letter-spacing:2px;}
+  #graphArea{width:100%;left:0;transform:none;}
+}
+</style>
+</head>
+<body>
+
+<audio id="beatSound" preload="auto" src="https://media.studiocosmo.space/followmyheart/heartbeat.mp3"></audio></audio>
+<video id="bgVideo" loop muted playsinline webkit-playsinline preload="auto">
+  <source src="https://pub-d0e6a22059a0444fa8b751b209f38efc.r2.dev/followmyheart/VideobattementcoeurLD.mp4" type="video/mp4">
+</video>
+<div id="warmGlow"></div>
+<div id="vignette"></div>
+
+<div id="langPicker">
+  <button class="lang-opt" onclick="chooseLang('fr')">Fran&ccedil;ais</button>
+  <span id="langSep">&middot;</span>
+  <button class="lang-opt" onclick="chooseLang('en')">English</button>
+</div>
+
+<nav id="nav">
+  <button id="sndBtn">&#128265;</button>
+  <a href="#" id="navAbout">about</a>
+  <a href="#" id="navContact">contact</a>
+</nav>
+
+<div id="bpmPanel">
+  <div id="bpmLabel">BPM ACTUEL</div>
+  <div id="bpmRowEl">
+    <div id="bpmHeart">&#9829;</div>
+    <div id="bpmNum">--</div>
+  </div>
+  <div id="bpmState"></div>
+</div>
+
+<div class="screen" id="s1">
+  <div id="s1Frost"></div>
+  <div id="introWrap"><div id="introLines"></div></div>
+</div>
+<button id="enterBtn">Follow my heart</button>
+
+<div class="screen hidden" id="s2"></div>
+
+<div id="graphArea">
+  <div id="subjectLabel"></div>
+  <canvas id="heartGraph"></canvas>
+</div>
+
+<div id="eggLayer">
+  <div id="eggText"></div>
+  <div id="eggInputWrap">
+    <div id="ynPromptTxt"></div>
+    <div id="ynRow">
+      <input id="ynField" maxlength="1" autocomplete="off" spellcheck="false" inputmode="text">
+      <span id="ynCursorEl"></span>
+    </div>
+    <div id="ynHintTxt"></div>
+  </div>
+</div>
+
+<div id="followYourWrap"><div id="followYourText"></div></div>
+
+<div id="s3Panel">
+  <p id="s3Intro"></p>
+  <button class="cbtn" id="btnOura">Oura Ring</button>
+  <div id="anonWrap">
+    <textarea id="anonField" rows="3"></textarea>
+    <button id="anonSubmit"></button>
+    <div id="anonMsg"></div>
+  </div>
+  <button id="s3Back"></button>
+</div>
+
+<div id="ouraPanel">
+  <p id="ouraInstructions"></p>
+  <input id="tokenField" type="password" autocomplete="new-password">
+  <div id="tokenBtns">
+    <button id="tokenSubmit">connect &rarr;</button>
+    <button id="tokenCancel">&larr; cancel</button>
+  </div>
+  <p id="ouraPriv"></p>
+  <div id="tokenError"></div>
+  <button id="ouraBack"></button>
+</div>
+
+<div id="transMsg"><p id="transTxt"></p></div>
+
+<div id="about">
+  <p class="page-title">Follow My Heart</p>
+  <p class="page-text" id="aboutText"></p>
+  <button class="page-close" id="aboutClose">&larr; close</button>
+</div>
+<div id="contact">
+  <a id="igLink" href="https://instagram.com/cosmo.mtl" target="_blank" rel="noopener" style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:3px;color:rgba(220,160,100,0.75);text-decoration:none;border-bottom:1px solid rgba(220,160,100,0.25);padding-bottom:3px;transition:color 0.3s;">@cosmo.mtl</a>
+  <button class="page-close" id="contactClose">&larr; close</button>
+</div>
+
+<script>
+var lang="fr",curScreen=0,activeBpm=72,soundOn=true,userConnected=false;
+var audioCtx=null,audioBuffer=null,nextBeatTime=0,schedHandle=null,useOscillator=false;
+var hoveredT=null,hoveredBpm=null;
+var W=window.innerWidth,H=window.innerHeight;
+var VIDEO_BPM=60;
+var eggStarted=false;
+var activeData=[];
+var GRAPH_W=0; // set when graph drawn, used to position bpmPanel
+
+function getMtlHour(){
+  var now=new Date();
+  var mtl=new Date(now.toLocaleString("en-US",{timeZone:"America/Toronto"}));
+  return mtl.getHours()+mtl.getMinutes()/60;
+}
+var NOW_HOUR=getMtlHour();
+
+var SOUND_URL="https://media.studiocosmo.space/followmyheart/heartbeat.mp3";
+
+// ── COPY ──────────────────────────────────────────────────────────────────
+var INTRO={
+  fr:[
+    {text:"\u00ab\u00a0Follow your heart\u00a0\u00bb",pause:2000,cls:"quote"},
+    {text:"\u00c7a para\u00eet simple dit comme \u00e7a.",pause:1000},
+    {text:"Pour moi, \u00e7a ne l\u2019a jamais \u00e9t\u00e9.",pause:0},
+    {isGap:true},
+    {text:"Mon c\u0153ur a toujours \u00e9t\u00e9 plus t\u00e9moin que boussole.",pause:0},
+    {text:"Un m\u00e9tronome dont je n\u2019ai jamais vraiment su d\u00e9chiffrer la mesure.",pause:0},
+    {isGap:true},
+    {text:"Un matin, j\u2019ai donc d\u00e9cid\u00e9 de tendre l\u2019oreille.",pause:0},
+    {text:"Suivre mon c\u0153ur.",pause:0},
+    {text:"Litt\u00e9ralement.",pause:0},
+    {isGap:true},
+    {text:"Battement apr\u00e8s battement.",pause:0},
+    {text:"Jour apr\u00e8s jour.",pause:0},
+    {text:"Ann\u00e9e apr\u00e8s ann\u00e9e\u2026",pause:0}
+  ],
+  en:[
+    {text:"\u201cFollow your heart.\u201d",pause:2000,cls:"quote"},
+    {text:"It sounds simple when you say it like that.",pause:1000},
+    {text:"For me, it never was.",pause:0},
+    {isGap:true},
+    {text:"My heart has always been more witness than compass.",pause:0},
+    {text:"A metronome whose rhythm I never really learned to read.",pause:0},
+    {isGap:true},
+    {text:"So one morning, I decided to listen closely.",pause:0},
+    {text:"To follow my heart.",pause:0},
+    {text:"Literally.",pause:0},
+    {isGap:true},
+    {text:"Beat after beat.",pause:0},
+    {text:"Day after day.",pause:0},
+    {text:"Year after year\u2026",pause:0}
+  ]
+};
+
+// EGG: each line appears, waits, then clears before next
+var EGG={
+  fr:[
+    {text:"Posez la paume de votre main sur votre poitrine.",pause:4000},
+    {text:"Sentez les battements de votre c\u0153ur.",pause:5000},
+    {isGap:true},
+    {text:"Que vous murmure votre c\u0153ur\u00a0?",pause:4000},
+    {text:"Qu\u2019est-ce que votre c\u0153ur sait que vous refusez d\u2019entendre\u00a0?",pause:5000},
+    {isGap:true},
+    {text:"Avez-vous confiance en votre c\u0153ur\u00a0?",pause:0,isLast:true,preGap:5000}
+  ],
+  en:[
+    {text:"Place the palm of your hand on your chest.",pause:4000},
+    {text:"Feel your heartbeat.",pause:5000},
+    {isGap:true},
+    {text:"What is your heart whispering?",pause:4000},
+    {text:"What does your heart know that you refuse to hear?",pause:5000},
+    {isGap:true},
+    {text:"Do you trust your heart?",pause:0,isLast:true,preGap:5000}
+  ]
+};
+
+var COPY={
+  fr:{
+    yn:"O\u00a0/\u00a0N\u00a0?",yesKey:"O",noKey:"N",ynPrompt:"R\u00e9pondez\u00a0:",
+    noMsg:"Je comprends. Revenez lorsque vous vous sentirez pr\u00eat\u00b7e.",
+    s3Intro:"Vous pouvez connecter votre anneau Oura et \u00e9couter votre propre c\u0153ur, ou nous \u00e9crire de mani\u00e8re anonyme pour nous partager ce que vous avez sur le c\u0153ur.",
+    anonPH:"Ce que j\u2019ai sur le c\u0153ur\u2026",
+    anonSend:"Envoyer",anonSent:"Message envoy\u00e9. Merci.",anonError:"Une erreur est survenue.",
+    ouraInstructions:"Rendez-vous sur cloud.ouraring.com\n\u2192 Personal Access Tokens\n\u2192 Create new token\n\nCopiez votre token ci-dessous.",
+    ouraPriv:"Vie priv\u00e9e\nVos donn\u00e9es restent les v\u00f4tres. Votre token, vos battements, votre historique, tout est stock\u00e9 localement dans votre navigateur et ne transite par aucun serveur. Nous ne voyons rien. Nous ne conservons rien. Vous pouvez vous d\u00e9connecter \u00e0 tout moment, et tout dispara\u00eet.",
+    tokenPH:"token personnel",
+    tokenErrEmpty:"Token requis.",tokenErrInvalid:"Token invalide.",tokenErrNoData:"Aucune donn\u00e9e.",
+    connecting:"Connexion en cours\u2026",connected:"Votre c\u0153ur bat maintenant.",
+    back:"\u2190 retour",bpmLabel:"BPM ACTUEL",
+    states:{rest:"Au repos",calm:"Calme",stressed:"Stress\u00e9",active:"Effort"},
+    subjectOwner:"Sujet\u00a0: Olivier M.",subject:"Vous",
+    navAbout:"\u00c0 propos",navContact:"contact",
+    aboutText:"Follow My Heart est une exp\u00e9rience web immersive, centr\u00e9e autour d\u2019une id\u00e9e\u00a0: rendre l\u2019\u00e9tat \u00e9motionnel d\u2019une personne visible et audible \u00e0 travers les donn\u00e9es r\u00e9elles de son rythme cardiaque.\n\nL\u2019exp\u00e9rience prend l\u2019injonction du d\u00e9veloppement personnel \u00e0 \u00ab\u00a0suivre son c\u0153ur\u00a0\u00bb au pied de la lettre pour mieux retrouver la mesure de nos vies, un battement apr\u00e8s l\u2019autre.",
+    contactQ:"Comment se porte votre c\u0153ur\u00a0?"
+  },
+  en:{
+    yn:"Y\u00a0/\u00a0N\u00a0?",yesKey:"Y",noKey:"N",ynPrompt:"Answer:",
+    noMsg:"I understand. Come back when you feel ready.",
+    s3Intro:"You can connect your Oura ring and listen to your own heart, or write to us anonymously and share what\u2019s on your heart.",
+    anonPH:"What\u2019s on my heart\u2026",
+    anonSend:"Send",anonSent:"Message sent. Thank you.",anonError:"Something went wrong.",
+    ouraInstructions:"Go to cloud.ouraring.com\n\u2192 Personal Access Tokens\n\u2192 Create new token\n\nPaste your token below.",
+    ouraPriv:"Privacy\nYour data stays yours. Your token, your heartbeats, your history, everything is stored locally in your browser and never sent to any server. We see nothing. We store nothing. You can disconnect at any time and everything disappears.",
+    tokenPH:"personal access token",
+    tokenErrEmpty:"Token required.",tokenErrInvalid:"Invalid token.",tokenErrNoData:"No data found.",
+    connecting:"Connecting\u2026",connected:"Your heart is beating now.",
+    back:"\u2190 back",bpmLabel:"CURRENT BPM",
+    states:{rest:"Resting",calm:"Calm",stressed:"Stressed",active:"Active"},
+    subjectOwner:"Subject: Olivier M.",subject:"You",
+    navAbout:"about",navContact:"contact",
+    aboutText:"Follow My Heart is an immersive web experience centered on a single idea: making a person\u2019s emotional state visible and audible through real data from their heart rate.\n\nThe experience takes the self-help injunction \u201cfollow your heart\u201d literally, in order to better reconnect with the rhythm of our lives, one beat at a time.",
+    contactQ:"How is your heart doing?"
+  }
+};
+function T(){return COPY[lang];}
+
+var OWNER_DATA=[
+  {t:0.038,bpm:75,src:"awake"},{t:0.382,bpm:75,src:"awake"},{t:0.682,bpm:82,src:"awake"},
+  {t:0.960,bpm:82,src:"awake"},{t:1.144,bpm:85,src:"awake"},{t:1.555,bpm:77,src:"awake"},
+  {t:1.866,bpm:74,src:"awake"},{t:2.074,bpm:77,src:"awake"},{t:2.339,bpm:71,src:"awake"},
+  {t:2.704,bpm:71,src:"awake"},{t:3.041,bpm:68,src:"awake"},{t:3.251,bpm:69,src:"awake"},
+  {t:3.654,bpm:72,src:"awake"},{t:3.990,bpm:59,src:"awake"},{t:4.271,bpm:56,src:"awake"},
+  {t:4.592,bpm:54,src:"awake"},{t:5.121,bpm:53,src:"rest"},{t:5.954,bpm:55,src:"rest"},
+  {t:6.788,bpm:52,src:"rest"},{t:7.621,bpm:50,src:"rest"},{t:8.454,bpm:55,src:"rest"},
+  {t:9.288,bpm:51,src:"rest"},{t:10.121,bpm:52,src:"rest"},{t:10.954,bpm:53,src:"rest"},
+  {t:11.905,bpm:63,src:"awake"},{t:12.438,bpm:66,src:"awake"},{t:12.700,bpm:81,src:"awake"},
+  {t:13.038,bpm:71,src:"awake"},{t:13.183,bpm:88,src:"workout"},{t:13.224,bpm:97,src:"workout"},
+  {t:13.335,bpm:95,src:"workout"},{t:13.404,bpm:96,src:"workout"},{t:13.474,bpm:91,src:"workout"},
+  {t:13.543,bpm:96,src:"workout"},{t:13.571,bpm:100,src:"workout"},{t:13.585,bpm:102,src:"workout"},
+  {t:13.640,bpm:99,src:"workout"},{t:13.682,bpm:97,src:"workout"},{t:13.722,bpm:88,src:"workout"},
+  {t:14.029,bpm:76,src:"awake"},{t:14.407,bpm:91,src:"awake"},{t:14.777,bpm:74,src:"awake"},
+  {t:15.026,bpm:71,src:"awake"},{t:15.519,bpm:73,src:"awake"},{t:15.740,bpm:71,src:"awake"},
+  {t:16.036,bpm:69,src:"awake"},{t:16.579,bpm:67,src:"awake"},{t:16.908,bpm:61,src:"awake"},
+  {t:17.199,bpm:78,src:"awake"},{t:17.580,bpm:72,src:"awake"},{t:17.971,bpm:77,src:"awake"},
+  {t:18.412,bpm:84,src:"awake"},{t:18.836,bpm:91,src:"awake"},{t:18.964,bpm:84,src:"awake"},
+  {t:19.256,bpm:82,src:"awake"},{t:19.588,bpm:81,src:"awake"},{t:19.862,bpm:76,src:"awake"},
+  {t:20.083,bpm:84,src:"awake"},{t:20.603,bpm:82,src:"awake"},{t:21.011,bpm:88,src:"awake"},
+  {t:21.067,bpm:116,src:"workout"},{t:21.094,bpm:103,src:"workout"},{t:21.128,bpm:115,src:"workout"}
+].filter(function(d){return d.t<=NOW_HOUR;}).sort(function(a,b){return a.t-b.t;});
+
+function el(id){return document.getElementById(id);}
+
+// chooseLang FIRST
+function chooseLang(l){
+  lang=l;document.documentElement.lang=l;
+  el("langPicker").style.display="none";curScreen=1;
+  el("navAbout").textContent=T().navAbout;
+  el("navContact").textContent=T().navContact;
+  startIntro();
+}
+
+// LIFE COUNTER — born 11 July 1980 09:06 Paris (UTC+2 summer = UTC+1 winter, but July=summer so UTC+2)
+var BIRTH_UTC=Date.UTC(1980,6,11,7,6,0); // 9h06 Paris summer = 7h06 UTC
+
+function lifeCounter(){
+  var diff=Date.now()-BIRTH_UTC;
+  var ms=diff;
+  var years=Math.floor(ms/(365.25*24*3600*1000)); ms-=years*365.25*24*3600*1000;
+  var months=Math.floor(ms/(30.44*24*3600*1000)); ms-=months*30.44*24*3600*1000;
+  var days=Math.floor(ms/(24*3600*1000)); ms-=days*24*3600*1000;
+  var hours=Math.floor(ms/(3600*1000)); ms-=hours*3600*1000;
+  var minutes=Math.floor(ms/60000);
+  return {years:years,months:months,days:days,hours:hours,minutes:minutes};
+}
+
+function updateSubjectLabel(){
+  var c=lifeCounter();
+  var sl=el("subjectLabel"); if(!sl)return;
+  if(lang==="fr"){
+    sl.textContent=T().subjectOwner+" \u2014 Ce c\u0153ur bat depuis "+c.years+"\u00a0ans, "+c.months+"\u00a0mois, "+c.days+"\u00a0jours, "+c.hours+"\u00a0h et "+c.minutes+"\u00a0min.";
+  } else {
+    sl.textContent=T().subjectOwner+" \u2014 This heart has been beating for "+c.years+" years, "+c.months+" months, "+c.days+" days, "+c.hours+"h and "+c.minutes+" min.";
+  }
+}
+
+// AUDIO
+function b64ToBuffer(b64){var bin=atob(b64),buf=new ArrayBuffer(bin.length),v=new Uint8Array(buf);for(var i=0;i<bin.length;i++)v[i]=bin.charCodeAt(i);return buf;}
+// ── AUDIO ─────────────────────────────────────────────────────────────────
+var audioCtx=null, audioBuffer=null;
+var SOUND_URL="https://media.studiocosmo.space/followmyheart/heartbeat.mp3";
+
+function b64ToBuffer(b64){
+  var bin=atob(b64),buf=new ArrayBuffer(bin.length),v=new Uint8Array(buf);
+  for(var i=0;i<bin.length;i++)v[i]=bin.charCodeAt(i);
+  return buf;
+}
+var SOUND_B64="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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////////////+//7//v/+//3//f/9//3//P/8//z/+//7//v/+v/6//r/+f/5//n/+P/4//f/9//3//b/9v/1//X/9P/0//P/8//z//L/8v/x//H/8P/w/+//7//u/+7/7f/t/+z/7P/r/+v/6v/q/+r/6f/p/+j/6P/n/+f/5v/m/+X/5f/l/+T/5P/j/+P/4//i/+L/4v/h/+H/4f/g/+D/4P/f/9//3//f/97/3v/e/97/3f/d/93/3f/d/93/3f/d/93/3P/c/9z/3P/c/93/3f/d/93/3f/d/93/3f/e/97/3v/e/9//3//f/+D/4P/g/+H/4f/i/+L/4//j/+T/5f/l/+b/5//n/+j/6f/q/+v/6//s/+3/7v/v//D/8f/y//P/9P/2//f/+P/5//v//P/9////AAAAAAIAAwAFAAcACAAKAAwADQAPABEAEwAUABYAGAAaABwAHgAgACIAJAAnACkAKwAtAC8AMgA0ADcAOQA7AD4AQQBDAEYASABLAE4AUABTAFYAWQBcAF8AYgBlAGgAawBuAHEAdAB3AHoAfgCBAIQAiACLAI4AkgCVAJkAnACgAKQApwCrAK8AsgC2ALoAvgDCAMYAyQDNANEA1QDZAN0A4gDmAOoA7gDyAPYA+wD/AAMBBwEMARABFAEZAR0BIgEmASsBLwE0ATgBPQFBAUYBSwFPAVQBWQFdAWIBZwFsAXABdQF6AX8BgwGIAY0BkgGXAZwBoAGlAaoBrwG0AbkBvgHDAcgBzQHSAdYB2wHgAeUB6gHvAfQB+QH+AQMCCAINAhICFwIbAiACJQIqAi8CNAI5Aj4CQgJHAkwCUQJWAloCXwJkAmkCbQJyAncCewKAAoUCiQKOApIClwKbAqACpAKpAq0CsQK2AroCvgLDAscCywLPAtMC1wLbAt8C4wLnAusC7wLzAvcC+gL+AgIDBQMJAw0DEAMUAxcDGgMeAyEDJAMnAyoDLQMwAzMDNgM5AzwDPwNBA0QDRwNJA0wDTgNQA1MDVQNXA1kDWwNdA18DYQNjA2UDZgNoA2kDawNsA24DbwNwA3EDcgNzA3QDdQN2A3YDdwN3A3gDeAN5A3kDeQN5A3kDeQN5A3kDeAN4A3cDdwN2A3YDdQN0A3MDcgNxA3ADbgNtA2sDagNoA2cDZQNjA2EDXwNdA1sDWANWA1MDUQNOA0sDSQNGA0MDPwM8AzkDNgMyAy8DKwMnAyMDIAMcAxcDEwMPAwsDBgMCA/0C+AL0Au8C6gLlAt8C2gLVAs8CygLEAr8CuQKzAq0CpwKhApsClAKOAogCgQJ6AnQCbQJmAl8CWAJRAkkCQgI7AjMCLAIkAhwCFQINAgUC/QH1AewB5AHcAdMBywHCAbkBsQGoAZ8BlgGNAYQBewFxAWgBXwFVAUwBQgE5AS8BJQEbAREBBwH9APMA6QDfANUAygDAALUAqwCgAJYAiwCAAHYAawBgAFUASgA/ADQAKQAeABIABwD9//L/5v/b/8//xP+5/63/of+W/4r/f/9z/2f/XP9Q/0T/OP8s/yH/Ff8J//3+8f7l/tn+zf7B/rX+qf6d/pH+hf55/m3+Yf5V/kn+Pf4x/iX+Gf4N/gH+9f3p/d790v3G/br9rv2i/Zb9i/1//XP9Z/1c/VD9RP05/S39Iv0W/Qv9//z0/On83fzS/Mf8vPyw/KX8mvyP/IX8evxv/GT8WfxP/ET8Ovwv/CX8G/wQ/Ab8/Pvy++j73vvV+8v7wfu4+677pfuc+5L7ifuA+3f7bvtm+137VPtM+0T7O/sz+yv7I/sb+xP7DPsE+/369fru+uf64PrZ+tL6zPrF+r/6ufqy+qz6pvqh+pv6lfqQ+ov6hvqB+nz6d/py+m76afpl+mH6XfpZ+lb6UvpP+kz6SfpG+kP6QPo++jz6Ofo3+jX6NPoy+jH6MPou+i76Lfos+iz6K/or+iv6K/os+iz6Lfou+i/6MPox+jP6NPo2+jj6Ovo9+j/6QvpF+kj6S/pO+lL6Vvpa+l76Yvpm+mv6cPp0+nr6f/qE+or6kPqW+pz6ovqp+q/6tvq9+sT6zPrT+tv64/rr+vP6+/oE+w37Fvsf+yj7Mfs7+0X7T/tZ+2P7bvt4+4P7jvuZ+6T7sPu8+8f70/vg++z7+PsF/BL8H/ws/Dn8RvxU/GL8cPx+/Iz8mvyp/Lj8xvzV/OX89PwD/RP9I/0y/UL9U/1j/XP9hP2V/aX9tv3H/dn96v38/Q3+H/4x/kP+Vf5n/nr+jP6f/rL+xP7X/uv+/v4R/yT/OP9M/1//c/+H/5v/r//D/9j/7P8AABQAKQA9AFIAZwB8AJEApgC7ANEA5gD7ABEBJgE8AVIBZwF9AZMBqQG/AdUB6wEBAhcCLQJDAlkCbwKFApwCsgLIAt8C9QILAyIDOANOA2UDewOSA6gDvgPVA+sDAQQYBC4ERARbBHEEhwSdBLQEygTgBPYEDAUiBTgFTgVkBXkFjwWlBboF0AXmBfsFEAYmBjsGUAZlBnoGjwakBrgGzQbhBvYGCgceBzIHRgdaB24HggeVB6kHvAfPB+IH9QcICBoILQg/CFEIYwh1CIcImAiqCLsIzAjdCO4I/ggPCR8JLwk/CU8JXgluCX0JjAmaCakJtwnFCdMJ4QnvCfwJCQoWCiIKLwo7CkcKUwpeCmoKdQp/CooKlAqeCqgKsgq7CsQKzQrWCt4K5gruCvUK/QoECwoLEQsXCx0LIgsoCy0LMQs2CzoLPgtCC0ULSAtKC00LTwtRC1ILUwtUC1ULVQtVC1ULVAtTC1ILUAtOC0wLSQtGC0MLPws7CzcLMgstCygLIgscCxYLDwsICwEL+QrxCukK4ArXCs4KxAq6CrAKpQqaCo4Kggp2CmoKXQpPCkIKNAolChcKCAr4CekJ2AnICbcJpgmUCYIJcAldCUoJNwkjCQ8J+wjmCNEIuwilCI8IeQhiCEoIMwgbCAII6QfQB7cHnQeDB2gHTQcyBxcH+wbeBsIGpQaIBmoGTAYtBg8G8AXQBbEFkAVwBU8FLgUNBesEyQSnBIQEYQQ9BBoE9gPRA60DiANiAz0DFwPwAsoCowJ8AlQCLQIFAtwBtAGLAWEBOAEOAeQAuQCPAGQAOQANAOL/tv+K/17/Mf8E/9b+qf57/k3+H/7w/cH9kv1j/TP9BP3U/KT8c/xD/BL84fuw+377Tfsb++n6t/qE+lL6H/rs+bn5hvlS+R/56/i3+IP4T/gb+Ob3svd990j3E/fe9qn2c/Y+9gj20/Wd9Wf1MfX79MX0j/RZ9CL07PO183/zSPMS89vypPJu8jfyAPLJ8ZLxXPEl8e7wt/CA8EnwEvDc76Xvbu837wDvyu6T7l3uJu7w7bntg+1M7Rbt4Oyq7HTsPuwI7NPrneto6zLr/erI6pPqXuoq6vXpwemM6VjpJOnx6L3oiuhX6CPo8ee+54znWecn5/XmxOaT5mHmMOYA5s/ln+Vv5UDlEOXh5LLkhORV5Cfk+uPM45/jcuNG4xnj7uLC4pfibOJB4hfi7eHE4ZrhcuFJ4SHh+eDS4KvghOBe4DjgE+Du38rfpd+C317fO98Z3/fe1d603pPec95T3jTeFd723dndu92e3YHdZd1K3S/dFN363OHcyNyv3Jfcf9xo3FLcPNwn3BLc/dvq29fbxNuy26Dbj9t/22/bYNtR20PbNdso2xzbENsF2/ra8Nrn2t7a1trO2sfawdq72rbasdqt2qrap9ql2qTao9qj2qTapdqn2qnarNqw2rXautrA2sbazdrV2t3a5trw2vraBdsR2x7bK9s420fbVttm23bbh9uZ26zbv9vT2+jb/dsT3CncQdxZ3HHci9yl3MDc29z33BTdMt1Q3W/dj92v3dDd8t0U3jfeW95/3qXeyt7x3hjfQN9p35LfvN/n3xLgPuBr4JjgxuD14CXhVeGF4bfh6eEc4k/ihOK44u7iJONb45LjyuMD5D3kd+Sx5O3kKeVm5aPl4eUf5l/mnubf5iDnYuek5+fnK+hv6LTo+eg/6YbpzekV6l3qpurw6jrrhevQ6xzsaOy17APtUe2f7e/tPu6P7t/uMe+D79XvKPB78M/wJPF58c7xJPJ68tHyKfOB89nzMvSL9OX0P/WZ9fT1UPas9gj3ZffC9yD4fvjc+Dv5mvn5+Vn6uvoa+3v73fs+/KD8A/1l/cj9LP6P/vP+WP+8/yAAhQDrAFABtgEdAoMC6gJRA7gDHwSHBO8EVwW/BSgGkAb5BmIHywc1CJ4ICAlyCdwJRgqwChoLhAvvC1oMxAwvDZoNBQ5wDtsORg+xDxwQhxDyEF0RyRE0Ep8SChN1E+ATSxS2FCEVjBX3FWIWzBY3F6IXDBh2GOAYShm0GR4aiBrxGlobwxssHJUc/RxmHc4dNh6eHgUfbB/THzogoCAHIW0h0iE4Ip0iAiNmI8ojLiSRJPUkVyW6JRwmfibfJkAnoScBKGEowCgfKX4p3Ck5Kpcq8ypQK6srByxiLLwsFi1wLcgtIS55LtAuJy99L9MvKDB9MNEwJDF3MckxGzJsMr0yDTNcM6sz+TNGNJM03zQrNXU1vzUJNlI2mjbhNig3bjezN/g3PDh/OME4AzlEOYQ5wzkCOkA6fTq5OvU6MDtqO6M73DsTPEo8gDy1POo8HT1QPYI9sz3jPRI+QT5uPps+xz7yPhw/RT9uP5U/vD/hPwZAKkBNQG9AkECxQNBA7kAMQShBREFfQXhBkUGpQcBB1kHrQf9BEkIkQjVCRUJVQmNCcEJ9QohCkkKcQqRCq0KyQrdCvEK/QsJCw0LEQsNCwUK/QrtCt0KxQqtCo0KbQpFCh0J7Qm9CYUJSQkNCMkIhQg5C+kHmQdBBukGiQYlBcEFVQTlBHUH/QOBAwUCgQH5AXEA4QBNA7j/HP6A/dz9NPyM/9z7LPp0+bz4/Pg8+3T2rPXc9Qz0OPdc8oDxoPC889Tu6O347QTsDO8Q6hTpEOgM6wDl9OTg58zitOGY4HjjVN4w3QTf2Nqk2XDYONr81bzUfNc00ezQoNNQzfzMpM9MyezIjMsoxcDEWMbswXjACMKQvRS/mLoYuJi7ELWIt/yybLDcs0itsKwYrnio3Ks4pZSn7KJAoJSi5J00n3yZyJgMmlCUkJbQkQyTSI2Aj7SJ6IgYikiEdIaggMiC8H0UfzR5VHt0dZB3qHHEc9ht8GwAbhRoJGowZDxmSGBQYlhcXF5gWGRaaFRoVmRQZFJgTFxOVEhMSkREPEYwQCRCGDwIPfg77DXYN8gxtDOkLZAvfClkK1AlOCcgIQwi9BzYHsAYqBqQFHQWWBBAEiQMCA3wC9QFuAecAYQDb/1T/zf5H/sD9Of2z/Cz8pvsg+5r6E/qO+Qj5gvj993f38vZt9uj1Y/Xf9Fv01/NT88/yTPLJ8Ubxw/BB8L/vPu+87jvuuu067brsOuy76zzrveo/6sHpROnH6ErozudS59fmXObi5Wjl7uR25P3jheMO45fiIOKr4TXhwOBM4NnfZt/z3oHeEN6f3S/dwNxR3OPbddsI25zaMNrF2VvZ8tiJ2CHYuddT1+3Wh9Yj1r/VXNX61JjUN9TX03jTGtO80l/SA9Ko0U7R9NCb0EPQ7M+Wz0HP7M6ZzkbO9M2jzVPNBM22zGjMHMzQy4bLPMvzyqvKZMoeytnJlclSyRDJz8iOyE/IEcjTx5fHXMchx+jGsMZ4xkLGDcbYxaXFc8VCxRHF4sS0xIfEW8QwxAbE3cO1w47DaMNDwyDD/cLcwrvCnMJ9wmDCRMIowg7C9cHdwcbBscGcwYjBdsFkwVTBRME2wSnBHcESwQjB/8D3wPHA68DnwOPA4cDgwN/A4MDiwOXA6cDvwPXA/MAFwQ7BGcEkwTHBP8FOwV7Bb8GBwZTBqMG9wdPB68EDwhzCN8JSwm/CjMKrwsrC68IMwy/DUsN3w53Dw8PrwxTEPcRoxJPEwMTuxBzFTMV8xa3F4MUTxkfGfcazxurGIsdbx5THz8cLyEfIhcjDyALJQsmDycXJCMpLypDK1coby2LLqcvyyzvMhszQzBzNac22zQTOU86jzvPORM+Wz+nPPNCQ0OXQOtGQ0efRP9KX0vDSSdOj0/7TWtS21BPVcNXO1SzWi9br1kvXrNcO2HDY0tg12ZnZ/dli2sfaLNuS2/nbYNzH3C/dmN0A3mre094936jfE+B+4OngVeHC4S7im+II43bj5ONS5MHkMOWf5Q7mfebt5l3nzuc+6K/oIOmR6QLqdOrl6lfryes77K3sH+2R7QTudu7p7lzvzu9B8LTwJ/Ga8Q3yf/Ly8mXz2PNL9L30MPWj9RX2iPb69mz33vdQ+ML4NPml+Rf6iPr5+mr72/tL/Lv8K/2b/Qv+ev7p/lj/xv8zAKEADwF8AekBVgLCAi4DmQMFBG8E2gREBa0FFwZ/BugGUAe3Bx4IhAjrCFAJtQkaCn4K4QpEC6cLCQxqDMsMLA2LDeoNSQ6nDgQPYQ+9DxkQdBDOECgRgBHZETAShxLeEjMTiBPcEzAUghTUFCYVdhXGFRUWYxaxFv4WSheVF98XKRhyGLoYARlHGY0Z0hkWGlkamxrcGh0bXRubG9kbFhxTHI4cyBwCHTodch2pHd8dFB5IHnserR7eHg4fPh9sH5ofxh/yHxwgRiBvIJYgvSDjIAchKyFOIXAhkSGwIc8h7SEKIiYiQSJaInMiiyKiIrgizCLgIvMiBSMVIyUjNCNBI04jWSNkI24jdiN+I4QjiSOOI5EjkyOVI5UjlCOTI5AjjCOHI4EjeiNyI2kjXyNUI0gjOyMtIx4jDiP9Iusi2CLEIq4imCKBImkiUCI2Ihsi/iHhIcMhpCGEIWMhQSEeIfog1SCwIIkgYSA4IA8g5B+5H4wfXx8xHwEf0R6gHm4eOx4IHtMdnR1nHTAd+By/HIUcShwOHNIblRtWGxgb2BqXGlYaFBrQGY0ZSBkDGb0YdhguGOUXnBdSFwgXvBZwFiMW1hWIFTkV6RSZFEgU9hOkE1ET/RKpElQS/hGoEVIR+hCiEEoQ8Q+XDz0P4g6HDisOzw1yDRUNtwxZDPoLmgs7C9oKegoZCrcJVQnzCJAILQjJB2UHAQedBjgG0gVtBQcFoAQ6BNMDbAMEA5wCNQLMAWQB+wCSACkAwf9Y/+7+hP4a/rD9Rv3b/HH8Bvyc+zH7xvpb+vD5hfka+a/4RPjY9233AveX9iz2wfVW9ev0gPQV9KvzQPPW8mvyAfKX8S3xw/Ba8PDvh+8e77XuTO7k7XztFO2t7EXs3ut36xHrq+pF6t/peukV6bHoTejp54bnI+fA5l7m/eWb5Tvl2uR65BvkvONe4wDjouJG4unhjeEy4dfgfeAk4Mvfct8b38Pebd4X3sLdbd0Z3cbcc9wh3NDbf9sv2+DaktpE2vfZq9lf2RXZy9iB2DnY8der12XXINfb1pjWVdYT1tLVktVT1RXV19Sb1F/UJNTq07HTedNC0wzT19Ki0m/SPdIL0tvRq9F90U/RI9H40M3QpNB70FTQLdAI0OTPwM+ez33PXc8+zyDPA8/nzszOs86azoPObM5XzkPOMM4ezg3O/c3vzeHN1c3Jzb/Nts2vzajNos2ezZvNmc2YzZjNms2czaDNpc2rzbLNu83Ezc/N283ozfbNBs4XzijOO85QzmXOfM6TzqzOxs7izv7OHM87z1vPfM+ez8LP588N0DTQXNCG0LDQ3NAJ0TfRZ9GX0cnR/NEw0mXSm9LT0gvTRdOA07zT+dM41HfUuNT61D3VgdXG1QzWU9ac1ubWMNd818nXF9hm2LbYB9la2a3ZAtpX2q7aBdte27jbEtxu3MvcKd2I3efdSN6q3g3fcd/W3zvgouAK4XLh3OFG4rLiHuOM4/rjaeTZ5ErlvOUu5qLmFueM5wLoeejx6Gnp4+ld6tjqVOvQ607szOxL7cvtS+7M7k7v0e9U8NjwXfHi8Wjy7/J28/7zh/QQ9Zr1Jfaw9jz3yPdV+OL4cPn/+Y76Hfut+z78z/xh/fP9hf4Y/6v/PgDSAGcB/AGRAicDvQNUBOsEggUaBrEGSgfiB3sIFAmtCUYK4Ap6CxQMrwxJDeQNfw4aD7UPURDsEIgRJBK/ElsT9xOTFC8VyxVoFgQXoBc8GNgYdBkQGqwaSBvkG4AcGx23HVIe7R6JHyQgviBZIfMhjiInI8EjWyT0JI0lJia+JlYn7ieGKB0ptClKKuAqdisLLKAsNS3JLV0u8C6DLxUwpzA4MckxWjLpMnkzBzSWNCM1sDU9Nsk2VDffN2k48jh7OQM6ijoRO5c7HDyhPCQ9pz0qPqs+LD+sPyxAqkAoQaVBIUKcQhZDkEMIRIBE90RtReJFVkbJRjxHrUcdSI1I+0hpSdVJQUqrShVLfUvlS0tMsUwVTXhN2008TpxO+05YT7VPEVBrUMVQHVF0UcpRH1JyUsRSFlNmU7RTAlROVJpU5FQsVXRVulX/VUNWhVbGVgZXRVeCV75X+VczWGtYoljXWAtZPllwWaBZz1n8WSlaU1p9WqVazFrxWhVbOFtZW3lbl1u0W9Bb6lsDXBpcMFxFXFhcalx6XIlcllyiXK1ctly+XMRcyVzMXM5cz1zOXMxcyFzDXLxctFyqXJ9ck1yFXHVcZVxSXD9cKVwTXPtb4VvGW6lbjFtsW0tbKVsFW+BaulqSWmhaPVoRWuNZtFmDWVFZHlnpWLJYelhBWAdYy1eNV05XDlfMVolWRVb/VbhVb1UlVdpUjVQ/VPBTn1NNU/lSpVJOUvdRnlFEUehQjFAtUM5PbU8LT6hOQ07eTXdNDk2lTDpMzktgS/JKgkoRSp5JK0m2SEFIykdRR9hGXUbiRWVF50RoROhDZkPkQmBC3EFWQc9AR0C+PzQ/qT4dPpA9Aj1zPOM7UjvAOi06mTkEOW441zc/N6c2DTZyNdc0OzSeMwAzYTLBMSExgDDdLzsvly7yLU0tpywALFkrsSoIKl4ptCgJKF0nsSYEJlclqCT6I0ojmiLqITghhyDUHyIfbh66HQYdURycG+YaMBp5GcIYCxhTF5oW4hUpFW8UtRP7EkEShhHLEBAQVA+YDtwNHw1jDKYL6QosCm4JsQjzBzUHdwa5BfsEPAR+A78CAQJCAYQAxv8H/0n+iv3L/A38TvuQ+tH5E/lV+Jf32fYb9l31oPTi8yXzaPKr8e/wMvB277vu/+1E7YnszusU61rqoOnn6C7odee95gXmTuWX5ODjKuN14sDhC+FX4KPf8N493ovd2twp3HjbyNoZ2mrZvNgP2GLXttYL1mDVttQM1GTTvNIU0m7RyNAj0H/P2844zpbN9cxVzLXLF8t5ytzJQMmlyArIccfYxkHGqsUUxX/E68NYw8bCNcKlwRbBiMD7v2+/5L5avtG9Sr3DvD28uLs1u7K6MbqxuTG5s7g2uLu3QLfHtk6217Vhtey0ebQGtJWzJbO2skmy3LFxsQexnrA3sNGvbK8Ir6auRa7lrYetKa3NrHOsGqzCq2urFavBqm+qHarNqX+pManlqJuoUagJqMOnfqc6p/emtqZ3pjim/KXApYalTaUWpeCkq6R4pEekFqToo7qjjqNjozqjEqPsoseipKKComGiQqIkogei7KHTobuhpKGPoXuhaaFYoUihOqEuoSKhGaEQoQmhBKEAof2g/KD8oP2gAKEFoQuhEqEaoSWhMKE9oUuhW6FsoX6hkqGnob6h1qHvoQqiJqJEomOig6Kkosei7KIRozijYaOKo7Wj4qMPpD6kbqSgpNOkB6U9pXOlq6XlpR+mW6aYptemFqdXp5mn3achqGeorqj3qECpi6nXqSSqcqrBqhKrY6u2qwqsX6y2rA2tZa2/rRqudq7TrjCvkK/wr1Gws7AWsXux4LFGsq6yFrN/s+qzVbTBtC61nLUMtny27LZet9G3Rbi5uC+5pbkcupS6DbuHuwG8fbz5vHa99L1yvvG+cb/yv3TA9sB5wf3BgcIGw4zDEsSZxCHFqcUyxrzGRsfRx1zI6Mh1yQLKkMoey63LPMzMzFzN7c1+zg/Pos800MfQW9Hu0YPSF9Os00LU19Ru1QTWm9Yy18nXYdj52JHZKtrC2lvb9NuO3Cjdwd1b3vbekN8r4MXgYOH74ZbiMePM42jkA+Wf5Trm1uZx5w3oqOhE6eDpe+oX67LrTezp7ITtH+667lXv8O+L8CXxwPFa8vTyjvMo9MH0W/X09Y32Jfe+91b47viF+Rz6s/pK++D7dvwM/aH9Nv7L/l//8/+FABgBqwE9As8CYAPxA4EEEQWhBTAGvgZMB9oHZgjzCH8JCgqVCh8LqAsxDLoMQg3JDU8O1Q5bD98PZBDnEGoR7BFtEu4SbhPtE2wU6hRnFeMVXxbaFlQXzRdGGL4YNRmrGSEalhoJG30b7xtgHNEcQR2wHR4eix73HmMfzh83IKAgCCFvIdYhOyKfIgMjZiPHIygkiCTnJEQloSX9JVgmsyYMJ2QnuycRKGcouygOKWApsikCKlEqnyrtKjkrhCvOKxgsYCynLO0sMi12Lbkt+y08Lnwuuy75LjUvcS+sL+UvHjBWMIwwwTD2MCkxWzGMMbwx6zEZMkYycjKdMsYy7zIWMz0zYjOHM6ozzDPtMw00LDRKNGc0gzSdNLc00DTnNP00EzUnNTo1TTVeNW41fTWLNZg1pDWvNbk1wTXJNdA11TXaNd414DXiNeI14jXgNd412jXWNdA1yjXCNbo1sDWmNZo1jjWANXI1YjVSNUE1LjUbNQc18jTcNMU0rTSUNHo0XzRENCc0CjTrM8wzrDOLM2kzRjMiM/4y2TKyMosyYzI7MhEy5zG7MY8xYjE1MQYx1zCnMHYwRTASMN8vqy93L0EvCy/ULp0uZC4sLvItty18LUEtBC3HLIksSywMLMwrjCtLKwkrxyqEKkEq/Sm4KXMpLSnnKKAoWSgRKMgnfyc2J+smoSZWJgomviVyJSUl1ySKJDsk7COdI04j/iKtIlwiCyK6IWghFSHDIHAgHCDJH3UfIB/MHnceIh7MHXYdIB3KHHMcHBzFG24bFhu/GmcaDxq2GV4ZBRmsGFMY+hehF0cX7haUFjoW4BWHFSwV0hR4FB4UwxNpEw8TtBJaEv8RpRFKEfAQlRA7EOEPhg8sD9IOdw4dDsMNaQ0PDbYMXAwCDKkLUAv3Cp4KRQrsCZQJOwnjCIsIMwjcB4QHLQfWBoAGKQbTBX0FJwXSBH0EKATTA38DKwPXAoQCMQLeAYsBOQHoAJYARQD2/6X/Vf8G/7f+aP4a/sz9fv0x/eT8mPxM/AH8tvts+yL72PqP+kb6/vm3+W/5Kfnj+J34WPgT+M/3i/dI9wb3xPaC9kL2AfbB9YL1Q/UF9cj0i/RP9BP02POd82PzKvPx8rnygfJK8hTy3vGp8XTxQfEN8dvwqfB48EfwF/Do77nvi+9e7zHvBe/a7q/uhe5c7jPuC+7k7b3tl+1y7U3tKu0G7eTswuyh7IHsYexC7CTsBuzq683rsuuX633rZOtL6zPrHOsG6/Dq2+rH6rPqoOqO6n3qbOpc6kzqPuow6iPqFuoL6v/p9ens6ePp2unT6czpxunB6bzpuOm16bLpsemv6a/pr+mw6bLptOm36bvpv+nE6crp0enY6eDp6Onx6fvpBeoR6hzqKeo26kTqUuph6nHqguqT6qTqt+rK6t3q8uoG6xzrMutJ62DreOuQ66rrw+ve6/nrFOww7E3sauyI7Kbsxezl7AXtJe1H7Wjti+2t7dHt9e0Z7j7uY+6J7rDu1+7+7ibvTu9376Hvyu/17yDwS/B38KPwz/D88CrxWPGG8bXx5PET8kPydPKl8tbyB/M582vznvPR8wT0OPRs9KH01fQK9UD1dvWs9eL1GfZQ9of2vvb29i73Zvef99j3EfhK+IT4vvj4+DL5bPmn+eL5HfpY+pT60PoL+0f7hPvA+/z7Ofx2/LP88Pwt/Wr9p/3l/SL+YP6e/tz+Gv9X/5b/1P8RAE8AjQDLAAoBSAGGAcUBAwJBAoACvgL8AjoDeQO3A/UDMwRxBK8E7QQrBWkFpgXkBSIGXwacBtkGFwdTB5AHzQcKCEYIggi+CPoINglyCa0J6AkjCl4KmQrTCg4LSAuBC7sL9AsuDGYMnwzYDBANSA1/DbcN7g0kDlsOkQ7HDv0OMg9nD5wP0A8EEDgQaxCeENEQBBE2EWcRmRHKEfoRKxJaEooSuRLoEhYTRBNyE58TyxP4EyQUTxR6FKUUzxT5FCIVSxV0FZwVwxXrFREWNxZdFoMWpxbMFvAWExc2F1gXehecF70X3Rf9Fx0YPBhbGHkYlhizGNAY6xgHGSIZPBlWGXAZiBmhGbgZ0BnmGf0ZEhonGjwaUBpjGnYaiRqaGqwavBrNGtwa6xr6GggbFRsiGy4bOhtFG1AbWhtjG2wbdRt8G4QbihuQG5YbmxufG6MbphupG6sbrRuuG64brhutG6wbqhuoG6UboRudG5kbkxuOG4cbgBt5G3EbaBtfG1YbSxtBGzUbKRsdGxAbAhv0GuYa1xrHGrcaphqVGoMacBpdGkoaNhoiGg0a9xnhGcoZsxmcGYQZaxlSGTgZHhkDGegYzRiwGJQYdxhZGDsYHBj9F94XvhedF3wXWxc5FxcX9BbRFq0WiRZlFkAWGhb0Fc4VpxWAFVkVMRUIFeAUthSNFGMUOBQOFOITtxOLE18TMhMFE9cSqhJ8Ek0SHhLvEb8RkBFfES8R/hDNEJsQaRA3EAUQ0g+fD2wPOA8ED9AOmw5nDjIO/A3HDZENWw0lDe4MtwyADEkMEQzaC6ILagsxC/kKwAqHCk4KFQrbCaEJaAkuCfMIuQh/CEQICQjOB5MHWAcdB+EGpgZqBi4G8gW2BXoFPgUCBcYEiQRNBBAE1AOXA1oDHgPhAqQCZwIqAu0BsAFzATYB+QC8AH8AQgAFAMn/jf9Q/xP/1v6Z/lz+IP7j/af9av0u/fH8tfx5/Dz8APzE+4j7TfsR+9X6mvpf+iP66Pmt+XP5OPn9+MP4ifhP+BX42/eh92j3L/f29r32hPZM9hP22/Wj9Wz1NPX99Mb0j/RY9CL07PO284DzS/MW8+HyrPJ48kTyEPLc8anxdvFD8RHx3/Ct8HvwSvAZ8OjvuO+I71jvKO/57srunO5u7kDuEu7l7bjtjO1g7TTtCO3d7LLsiOxe7DTsC+zi67nrketp60LrG+v06s7qqOqC6l3qOOoU6vDpzOmp6YfpZOlC6SHp/+jf6L7onuh/6GDoQegj6AXo6OfL567nkud251vnQOcm5wzn8ubZ5sHmqOaR5nnmYuZM5jbmIOYL5vbl4uXO5bvlqOWW5YTlcuVh5VDlQOUw5SHlEuUE5fbk6OTb5M/kwuS35KzkoeSW5Izkg+R65HHkaeRi5FrkVORN5EjkQuQ95DnkNeQx5C7kK+Qp5CfkJuQl5CTkJOQk5CXkJuQo5CrkLeQw5DPkN+Q75EDkReRL5FHkV+Re5GXkbeR15H3khuSP5Jnko+Su5LnkxOTQ5Nzk6OT15APlEeUf5S3lPOVL5Vvla+V85YzlnuWv5cHl0+Xm5fnlDeYg5jTmSeZe5nPmiOae5rXmy+bi5vnmEecp50HnWudz54znpee/59nn9OcP6CroRehh6H3omei26NPo8OgN6SvpSeln6YbppenE6ePpA+oj6kPqY+qE6qXqxurn6gnrK+tN62/rkeu069fr+use7EHsZeyJ7K3s0uz27BvtQO1l7YvtsO3W7fztIu5I7m7ule687uPuCu8x71jvf++n78/v9u8e8Ebwb/CX8L/w6PAR8TnxYvGL8bTx3fEH8jDyWfKD8qzy1vIA8ynzU/N986fz0fP78yX0T/R59KT0zvT49CP1TfV39aL1zPX29SH2S/Z29qD2yvb19h/3Svd09573yffz9x34SPhy+Jz4xvjw+Br5RPlu+Zj5wvns+Rb6P/pp+pP6vPrl+g/7OPth+4r7s/vc+wX8LvxW/H/8p/zP/Pj8IP1I/W/9l/2//eb9Dv41/lz+g/6q/tD+9/4d/0P/av+Q/7X/2/8AACUASgBvAJQAuQDdAAEBJgFKAW0BkQG1AdgB+wEeAkECYwKFAqgCyQLrAg0DLgNPA3ADkQOyA9ID8gMSBDIEUQRwBI8ErgTNBOsECQUnBUUFYwWABZ0FugXWBfMFDwYrBkYGYgZ9BpgGsgbNBucGAQcbBzQHTQdmB38HmAewB8gH4Af3Bw4IJQg8CFMIaQh/CJQIqgi/CNQI6Qj9CBEJJQk5CUwJXwlyCYUJlwmpCbsJzQneCe8JAAoRCiEKMQpBClAKXwpuCn0KiwqaCqgKtQrDCtAK3QrpCvYKAgsOCxkLJQswCzoLRQtPC1kLYwttC3YLfwuIC5ALmQuhC6gLsAu3C74LxQvMC9IL2AveC+ML6AvuC/IL9wv7C/8LAwwHDAoMDQwQDBMMFQwYDBoMGwwdDB4MHwwgDCEMIQwhDCEMIQwgDCAMHwweDBwMGwwZDBcMFQwSDBAMDQwKDAcMAwz/C/wL+AvzC+8L6gvmC+EL2wvWC9ALywvFC78LuAuyC6sLpQueC5YLjwuIC4ALeAtwC2gLYAtXC04LRgs9CzQLKgshCxcLDgsEC/oK8ArmCtsK0QrGCrsKsAqlCpoKjwqDCngKbApgClQKSAo8CjAKIwoXCgoK/QnxCeQJ1wnKCbwJrwmiCZQJhwl5CWsJXQlPCUEJMwklCRcJCAn6COwI3QjOCMAIsQiiCJMIhAh1CGYIVwhICDkIKggaCAsI+wfsB90HzQe9B64HngePB38HbwdfB1AHQAcwByAHEAcAB/AG4AbQBsAGsAagBpAGgAZwBmAGUAZABjAGIAYQBgAG8AXgBdAFwAWwBaAFkAWABXAFYAVQBUAFMQUhBREFAQXxBOIE0gTCBLMEowSTBIQEdARlBFYERgQ3BCcEGAQJBPoD6wPcA80DvgOvA6ADkQOCA3MDZQNWA0gDOQMrAxwDDgMAA/IC4wLVAscCuQKsAp4CkAKCAnUCZwJaAk0CPwIyAiUCGAILAv4B8QHkAdgBywG+AbIBpgGZAY0BgQF1AWkBXQFRAUYBOgEvASMBGAEMAQEB9gDrAOAA1QDLAMAAtgCrAKEAlgCMAIIAeABuAGQAWwBRAEgAPgA1ACwAIgAZABAABwAAAPf/7v/m/93/1f/N/8X/vf+1/63/pf+e/5b/j/+H/4D/ef9y/2v/ZP9d/1b/UP9J/0P/Pf82/zD/Kv8k/x7/Gf8T/w3/CP8D//3++P7z/u7+6f7k/t/+2/7W/tL+zf7J/sX+wf69/rn+tf6x/q3+qv6m/qP+n/6c/pn+lv6T/pD+jf6K/of+hf6C/oD+ff57/nn+dv50/nL+cP5v/m3+a/5p/mj+Zv5l/mT+Yv5h/mD+X/5e/l3+XP5b/lv+Wv5Z/ln+WP5Y/lf+V/5X/lf+V/5X/lf+V/5X/lf+V/5X/lj+WP5Z/ln+Wv5a/lv+XP5c/l3+Xv5f/mD+Yf5i/mP+ZP5l/mf+aP5p/mr+bP5t/m/+cP5y/nP+df52/nj+ev58/n3+f/6B/oP+hf6H/on+i/6N/o/+kf6T/pX+l/6Z/pv+nv6g/qL+pP6n/qn+q/6u/rD+s/61/rf+uv68/r/+wf7E/sb+yf7L/s7+0P7T/tb+2P7b/t3+4P7j/uX+6P7r/u3+8P7y/vX++P76/v3+AP8C/wX/CP8K/w3/EP8S/xX/GP8a/x3/IP8i/yX/KP8q/y3/L/8y/zX/N/86/zz/P/9C/0T/R/9J/0z/Tv9R/1P/Vv9Y/1v/Xf9f/2L/ZP9n/2n/a/9u/3D/cv91/3f/ef98/37/gP+C/4T/h/+J/4v/jf+P/5H/k/+V/5f/mf+b/53/n/+h/6P/pf+n/6n/q/+t/67/sP+y/7T/tf+3/7n/uv+8/77/v//B/8P/xP/G/8f/yf/K/8z/zf/O/9D/0f/S/9T/1f/W/9j/2f/a/9v/3f/e/9//4P/h/+L/4//k/+X/5v/n/+j/6f/q/+v/7P/t/+7/7//v//D/8f/y//P/8//0//X/9f/2//f/9//4//n/+f/6//r/+//7//z//P/9//3//v/+/////////wAAAAAAAAAAAAAAAAEAAQABAAEAAgACAAIAAgADAAMAAwADAAMAAwAEAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAQABAAFAAUABQAFAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAMAAwADAAMAAwADAAMAAwADAAMAAgACAAIAAgACAAIAAgACAAIAAgABAAEAAQABAAEAAQABAAEAAQABAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+function initAudio(onReady){
+  var AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC){ if(onReady)onReady(); return; }
+  audioCtx=new AC();
+  if(audioCtx.state==="suspended") audioCtx.resume();
+  // Try URL first, fallback to base64
+  fetch(SOUND_URL)
+    .then(function(r){ return r.arrayBuffer(); })
+    .then(function(buf){ return audioCtx.decodeAudioData(buf); })
+    .then(function(decoded){ audioBuffer=decoded; if(onReady)onReady(); })
+    .catch(function(){
+      // Fallback: base64
+      audioCtx.decodeAudioData(b64ToBuffer(SOUND_B64),
+        function(buf){ audioBuffer=buf; if(onReady)onReady(); },
+        function(){ if(onReady)onReady(); }
+      );
+    });
+}
+
+function scheduleBeat(time){
+  if(!soundOn||!audioCtx||!audioBuffer) return;
+  if(audioCtx.state==="suspended") audioCtx.resume();
+  try{
+    var src=audioCtx.createBufferSource();
+    src.buffer=audioBuffer;
+    var g=audioCtx.createGain(); g.gain.value=0.82;
+    src.connect(g); g.connect(audioCtx.destination);
+    src.start(Math.max(time,audioCtx.currentTime));
+  }catch(e){}
+}
+
+function stopScheduler(){clearTimeout(schedHandle);}
+
+
+// BPM PANEL — positioned right edge of graph
+function positionBpmPanel(){
+  var panel=el("bpmPanel"); if(!panel)return;
+  if(W<700){
+    panel.style.right="8px";
+    panel.style.bottom="130px";
+  } else {
+    var ga=el("graphArea"); if(!ga||!GRAPH_W)return;
+    var gRect=ga.getBoundingClientRect();
+    panel.style.right=(W-gRect.right)+"px";
+    panel.style.bottom="128px";
+  }
+}
+
+function updateBpmPanel(){
+  var numEl=el("bpmNum"),stateEl=el("bpmState"),labelEl=el("bpmLabel"),heartEl=el("bpmHeart");
+  if(!numEl)return;
+  numEl.textContent=Math.round(activeBpm);
+  var t=T(),hue,state;
+  if(activeBpm<60){hue="rgba(120,160,210,0.9)";state=t.states.rest;}
+  else if(activeBpm<85){hue="rgba(220,160,100,0.9)";state=t.states.calm;}
+  else if(activeBpm<100){hue="rgba(210,80,130,0.9)";state=t.states.stressed;}
+  else{hue="rgba(170,60,210,0.9)";state=t.states.active;}
+  numEl.style.color=hue;numEl.style.textShadow="0 0 30px "+hue;
+  if(stateEl){stateEl.textContent=state;stateEl.style.color=hue.replace("0.9","0.55");}
+  if(heartEl)heartEl.style.color=hue;
+  if(labelEl)labelEl.textContent=t.bpmLabel;
+}
+function applyVideoRate(){
+  var v=el("bgVideo");if(v)v.playbackRate=Math.max(0.1,Math.min(4.0,activeBpm/VIDEO_BPM));
+  updateBpmPanel();
+}
+
+// TYPEWRITER — faster version for instant-then-slow
+var TM={a:"sq",e:"rw",i:"ou",o:"ip",u:"yi",r:"et",t:"ry",n:"bm",s:"ad",l:"ko",c:"vx",m:"nk",d:"sf",p:"ol",h:"gj"};
+
+function typeChars(container,text,speed,noTypo,onDone){
+  var cur=document.createElement("span");cur.className="bcursor blink";container.appendChild(cur);
+  var chars=text.split(""),i=0;
+  var typoPositions=[];
+  if(speed==="human"&&!noTypo){
+    var elig=[];
+    for(var k=0;k<chars.length;k++)if(/[a-zA-Z]/.test(chars[k])&&TM[chars[k].toLowerCase()])elig.push(k);
+    for(var att=0;att<80&&typoPositions.length<2;att++){
+      var ri=elig[Math.floor(Math.random()*elig.length)];
+      var ok=true;for(var jj=0;jj<typoPositions.length;jj++)if(Math.abs(typoPositions[jj]-ri)<20){ok=false;break;}
+      if(ok)typoPositions.push(ri);
+    }
+  }
+  function next(){
+    if(i>=chars.length){if(cur.parentNode)cur.parentNode.removeChild(cur);if(onDone)onDone();return;}
+    var c=chars[i];
+    var bd;
+    if(speed==="instant"){bd=6+Math.random()*4;}
+    else if(speed==="slow"){bd=c===" "?120+Math.random()*40:(c==="."||c==="?"||c===","||c==="\u2026")?250+Math.random()*80:70+Math.random()*50;}
+    else{bd=c===" "?35+Math.random()*15:(c==="."||c==="?"||c===","||c==="\u2026")?80+Math.random()*30:20+Math.random()*18;}
+    var isTypo=false;
+    for(var j=0;j<typoPositions.length;j++)if(typoPositions[j]===i){isTypo=true;break;}
+    if(isTypo&&TM[c.toLowerCase()]){
+      var wc=TM[c.toLowerCase()][Math.floor(Math.random()*TM[c.toLowerCase()].length)];
+      var wt=document.createTextNode(wc);container.insertBefore(wt,cur);
+      setTimeout(function(){container.removeChild(wt);setTimeout(function(){container.insertBefore(document.createTextNode(c),cur);i++;setTimeout(next,bd);},80);},100+Math.random()*120);
+    } else {container.insertBefore(document.createTextNode(c),cur);i++;setTimeout(next,bd);}
+  }
+  next();
+}
+
+// INTRO — quote instant, rest human
+function startIntro(){
+  var container=el("introLines");if(!container)return;container.innerHTML="";
+  var lines=INTRO[lang];
+  var lineIdx=0;
+  function doLine(){
+    if(lineIdx>=lines.length){
+      // Wait 3s with text visible, then fade out, then show button
+      setTimeout(function(){
+        var iw=el("introWrap"),frost=el("s1Frost");
+        if(iw)iw.style.opacity="0";if(frost)frost.style.opacity="0";
+        setTimeout(function(){
+          var s1=el("s1");if(s1){s1.style.opacity="0";s1.style.pointerEvents="none";}
+          setTimeout(function(){var eb=el("enterBtn");if(eb)eb.classList.add("on");},500);
+        },800);
+      },4000);return;
+    }
+    var line=lines[lineIdx++];
+    if(line.isGap){
+      var g=document.createElement("span");g.className="iline gap";container.appendChild(g);
+      setTimeout(doLine,60);return;
+    }
+    var span=document.createElement("span");
+    span.className="iline"+(line.cls?" "+line.cls:"");
+    container.appendChild(span);
+    var capturedPause=line.pause||200;
+    typeChars(span,line.text,"human",true,function(){
+      var pc=document.createElement("span");pc.className="bcursor blink";span.appendChild(pc);
+      setTimeout(function(){if(pc.parentNode)pc.parentNode.removeChild(pc);setTimeout(doLine,80);},capturedPause);
+    });
+  }
+  doLine();
+}
+
+// ENTER
+// ── FETCH OWNER DATA J-7 via Worker proxy ────────────────────────────────
+var WORKER_URL = "https://followmyheart-api.olivier-8db.workers.dev";
+
+function fetchOwnerData(onDone){
+  // J-7 en heure de Montréal
+  var now=new Date();
+  var mtl=new Date(now.toLocaleString("en-US",{timeZone:"America/Toronto"}));
+  mtl.setDate(mtl.getDate()-7);
+  var ds=mtl.getFullYear()+"-"+String(mtl.getMonth()+1).padStart(2,"0")+"-"+String(mtl.getDate()).padStart(2,"0");
+  fetch(WORKER_URL+"?date="+ds)
+    .then(function(r){if(!r.ok)throw new Error("fetch");return r.json();})
+    .then(function(json){
+      if(!json.data||!json.data.length)throw new Error("empty");
+      var ud=json.data.map(function(p){
+        var d2=new Date(p.timestamp);
+        var mtlT=new Date(d2.toLocaleString("en-US",{timeZone:"America/Toronto"}));
+        return {t:mtlT.getHours()+mtlT.getMinutes()/60,bpm:p.bpm,src:p.source==="workout"?"workout":p.source==="rest"?"rest":"awake"};
+      }).filter(function(p){return p.t<=NOW_HOUR;}).sort(function(a,b){return a.t-b.t;});
+      if(!ud.length)throw new Error("empty");
+      onDone(ud);
+    })
+    .catch(function(){
+      // Fallback to hardcoded data
+      onDone(OWNER_DATA);
+    });
+}
+
+el("enterBtn").addEventListener("click",function(e){
+  e.stopPropagation();
+  el("enterBtn").classList.remove("on");
+  curScreen=2;
+  el("s1").classList.add("hidden");
+  el("s2").classList.remove("hidden");
+  el("bgVideo").classList.add("on");
+  el("bgVideo").play().catch(function(){});
+  el("graphArea").classList.add("on");
+  el("bpmPanel").classList.add("on");
+  el("sndBtn").classList.add("on");
+  el("nav").classList.add("on");
+  updateSubjectLabel();
+  setInterval(updateSubjectLabel,60000);
+  // Init audio first, then fetch data and start scheduler
+  initAudio(function(){
+    fetchOwnerData(function(data){
+      activeData=data;
+      drawGraph(activeData);
+      setTimeout(function(){positionBpmPanel();},50);
+      activeBpm=data.length?data[Math.floor(data.length/2)].bpm:72;
+      applyVideoRate();
+      nextBeatTime=audioCtx?audioCtx.currentTime+0.05:0;
+      scheduler();
+    });
+  });
+});
+
+// GRAPH
+function drawGraph(data){
+  if(!data||!data.length)return;
+  var hg=el("heartGraph");if(!hg)return;
+  var gCtx=hg.getContext("2d");
+  var minBpm=44,maxBpm=130,nowH=NOW_HOUR||14;
+  var gH=90,padL=38,padR=12,padT=10,padB=28;
+  GRAPH_W=Math.max(80,W<700?Math.round(W*0.96):Math.round(W*0.60));
+  var dpr=window.devicePixelRatio||1;
+  hg.width=Math.round(GRAPH_W*dpr);
+  hg.height=Math.round(gH*dpr);
+  hg.style.width=GRAPH_W+"px";
+  hg.style.height=gH+"px";
+  // Scale all drawing to physical pixels
+  gCtx.setTransform(dpr,0,0,dpr,0,0);
+  gCtx.clearRect(0,0,GRAPH_W,gH);
+  var px=function(v){return v;}; // coords stay in CSS px, setTransform handles scaling
+  var chartW=GRAPH_W-padL-padR,chartH=gH-padT-padB;
+  function xP(t){return padL+(t/nowH)*chartW;}
+  function yP(b){return padT+chartH-(b-minBpm)/(maxBpm-minBpm)*chartH;}
+
+  gCtx.fillStyle="rgba(8,2,6,0.85)";gCtx.fillRect(0,0,GRAPH_W,gH);
+  gCtx.font="6px Space Mono,monospace";gCtx.imageSmoothingEnabled=false;
+  [50,75,100].forEach(function(b){
+    var y=yP(b);
+    gCtx.beginPath();gCtx.moveTo(padL,y);gCtx.lineTo(GRAPH_W-padR,y);
+    gCtx.strokeStyle="rgba(255,255,255,0.05)";gCtx.lineWidth=0.5;gCtx.stroke();
+    gCtx.fillStyle="rgba(220,180,140,0.55)";gCtx.textAlign="right";gCtx.fillText(b,padL-4,y+3);
+  });
+  gCtx.textAlign="center";
+  for(var h=0;h<=nowH;h+=3){
+    gCtx.fillStyle="rgba(220,180,140,0.42)";
+    gCtx.fillText(h+"h",xP(h),gH-6);
+  }
+  gCtx.beginPath();data.forEach(function(p,i){i===0?gCtx.moveTo(xP(p.t),yP(p.bpm)):gCtx.lineTo(xP(p.t),yP(p.bpm));});
+  gCtx.lineTo(xP(data[data.length-1].t),gH-padB);gCtx.lineTo(xP(data[0].t),gH-padB);gCtx.closePath();
+  var fillG=gCtx.createLinearGradient(0,padT,0,gH-padB);
+  fillG.addColorStop(0,"rgba(160,40,20,0.18)");fillG.addColorStop(1,"rgba(60,5,15,0)");
+  gCtx.fillStyle=fillG;gCtx.fill();
+  // workout zones
+  var inW=false,wSi=null;
+  data.forEach(function(p,i){
+    if(p.src==="workout"&&!inW){inW=true;wSi=i;}
+    else if(p.src!=="workout"&&inW){
+      var rg=gCtx.createLinearGradient(0,padT,0,padT+chartH);
+      rg.addColorStop(0,"rgba(180,20,20,0.25)");rg.addColorStop(1,"rgba(130,10,10,0)");
+      gCtx.fillStyle=rg;gCtx.fillRect(xP(data[wSi].t),padT,xP(data[i-1].t)-xP(data[wSi].t),chartH);
+      inW=false;
+    }
+  });
+  // gradient line
+  var lg=gCtx.createLinearGradient(xP(data[0].t),0,xP(data[data.length-1].t),0);
+  lg.addColorStop(0,"hsl(35,82%,62%)");lg.addColorStop(0.30,"hsl(10,80%,60%)");
+  lg.addColorStop(0.55,"hsl(0,78%,56%)");lg.addColorStop(0.75,"hsl(330,76%,58%)");lg.addColorStop(1.0,"hsl(290,72%,55%)");
+  gCtx.save();gCtx.shadowBlur=10;gCtx.shadowColor="rgba(200,80,120,0.5)";
+  gCtx.beginPath();data.forEach(function(p,i){i===0?gCtx.moveTo(xP(p.t),yP(p.bpm)):gCtx.lineTo(xP(p.t),yP(p.bpm));});
+  gCtx.strokeStyle=lg;gCtx.lineWidth=3;gCtx.lineCap="round";gCtx.stroke();gCtx.restore();
+  gCtx.beginPath();data.forEach(function(p,i){i===0?gCtx.moveTo(xP(p.t),yP(p.bpm)):gCtx.lineTo(xP(p.t),yP(p.bpm));});
+  gCtx.strokeStyle=lg;gCtx.lineWidth=1.2;gCtx.lineCap="round";gCtx.stroke();
+  // hover
+  if(hoveredT!==null){
+    var hx=xP(hoveredT),hy=yP(hoveredBpm||50);
+    gCtx.beginPath();gCtx.moveTo(hx,padT);gCtx.lineTo(hx,gH-padB);
+    gCtx.strokeStyle="rgba(220,180,120,0.4)";gCtx.lineWidth=0.8;gCtx.setLineDash([3,4]);gCtx.stroke();gCtx.setLineDash([]);
+    gCtx.beginPath();gCtx.arc(hx,hy,3.5,0,Math.PI*2);gCtx.fillStyle="rgba(220,180,120,0.9)";gCtx.fill();
+  }
+  var lx=xP(data[data.length-1].t);
+  gCtx.beginPath();gCtx.moveTo(lx,padT);gCtx.lineTo(lx,gH-padB);
+  gCtx.strokeStyle="rgba(200,100,60,0.4)";gCtx.lineWidth=0.8;gCtx.setLineDash([2,3]);gCtx.stroke();gCtx.setLineDash([]);
+  gCtx.beginPath();gCtx.arc(lx,yP(data[data.length-1].bpm),4,0,Math.PI*2);gCtx.fillStyle="rgba(200,100,60,0.85)";gCtx.fill();
+
+  hg.style.cursor="crosshair";
+  hg.onmousemove=function(e){
+    var rect=hg.getBoundingClientRect();var mx=(e.clientX-rect.left)*(GRAPH_W/rect.width);
+    if(mx<padL||mx>GRAPH_W-padR){hoveredT=null;hoveredBpm=null;drawGraph(data);return;}
+    var t=(mx-padL)/chartW*nowH;var near=data[0];
+    for(var i=0;i<data.length;i++)if(Math.abs(data[i].t-t)<Math.abs(near.t-t))near=data[i];
+    hoveredT=near.t;hoveredBpm=near.bpm;drawGraph(data);
+    var hh=Math.floor(near.t),mm=String(Math.round((near.t-hh)*60)).padStart(2,"0");
+    el("subjectLabel").textContent=T().subjectOwner+" \u00b7 "+hh+"h"+mm+" \u00b7 "+near.bpm+" bpm";
+  };
+  hg.onmouseleave=function(){hoveredT=null;hoveredBpm=null;drawGraph(data);updateSubjectLabel();};
+  hg.onclick=function(e){
+    var rect=hg.getBoundingClientRect();var mx=(e.clientX-rect.left)*(GRAPH_W/rect.width);
+    if(mx<padL||mx>GRAPH_W-padR)return;
+    var t=(mx-padL)/chartW*nowH;var near=data[0];
+    for(var i=0;i<data.length;i++)if(Math.abs(data[i].t-t)<Math.abs(near.t-t))near=data[i];
+    activeBpm=near.bpm;applyVideoRate();
+  };
+}
+
+// EGG — each line appears alone, then clears
+document.body.addEventListener("click",function(e){
+  if(curScreen!==2)return;
+  if(e.target.closest("#nav")||e.target.closest("#sndBtn")||e.target.closest("#ynField")||
+     e.target.closest("#s3Panel")||e.target.closest("#ouraPanel")||e.target.closest("#transMsg")||
+     e.target.closest("#about")||e.target.closest("#contact")||e.target.closest("#eggInputWrap")||
+     e.target.closest("#graphArea")||e.target.closest("#followYourWrap"))return;
+  if(!eggStarted){eggStarted=true;startEgg();}
+});
+
+function startEgg(){
+  el("eggLayer").classList.add("on");
+  runEggLines(0);
+}
+
+function runEggLines(idx){
+  var lines=EGG[lang];
+  if(idx>=lines.length){
+    el("eggText").textContent="";
+    el("ynHintTxt").textContent=T().yn;
+    el("ynPromptTxt").textContent=T().ynPrompt;
+    el("eggInputWrap").classList.add("on");
+    el("ynField").focus();
+    return;
+  }
+  var line=lines[idx];
+  if(line.isGap){
+    setTimeout(function(){runEggLines(idx+1);},400);
+    return;
+  }
+  var preWait=line.preGap||0;
+  setTimeout(function(){
+    el("eggText").textContent="";
+    el("eggText").style.opacity="1";
+    el("eggText").style.transition="";
+    typeChars(el("eggText"),line.text,"slow",true,function(){
+      if(line.isLast){
+        setTimeout(function(){runEggLines(idx+1);},line.pause||200);
+      } else {
+        setTimeout(function(){
+          el("eggText").style.transition="opacity 0.6s";
+          el("eggText").style.opacity="0";
+          setTimeout(function(){
+            el("eggText").style.transition="";
+            runEggLines(idx+1);
+          },650);
+        },line.pause||500);
+      }
+    });
+  },preWait);
+}
+
+el("ynField").addEventListener("keydown",function(e){e.stopPropagation();});
+el("ynField").addEventListener("input",function(){
+  var v=el("ynField").value.toUpperCase();el("ynField").value=v;
+  if(v===T().yesKey){
+    el("eggInputWrap").classList.remove("on");
+    el("eggLayer").classList.remove("on");
+    showFollowYour();
+  } else if(v===T().noKey){
+    // Show no message, stay on s2
+    el("eggInputWrap").classList.remove("on");
+    el("eggText").textContent="";
+    el("eggText").style.opacity="1";
+    el("eggText").style.transition="";
+    typeChars(el("eggText"),T().noMsg,"slow",true,function(){
+      setTimeout(function(){
+        el("eggLayer").classList.remove("on");
+        el("eggText").textContent="";
+        el("ynField").value="";
+        eggStarted=false;
+      },3000);
+    });
+  } else if(v!=="")el("ynField").value="";
+});
+
+// FOLLOW YOUR HEART
+function showFollowYour(){
+  var wrap=el("followYourWrap"),txt=el("followYourText");
+  txt.innerHTML="";wrap.classList.add("on");
+  // Type "Follow " at slow speed
+  typeChars(txt,"Follow ","slow",true,function(){
+    // Then type "my" at slow speed
+    var mySpan=document.createElement("span");txt.appendChild(mySpan);
+    typeChars(mySpan,"my","slow",true,function(){
+      // Backspace "my" slowly
+      var c=mySpan.textContent;
+      var bsIdx=c.length;
+      function backspace(){
+        if(bsIdx<=0){
+          mySpan.textContent="";
+          var em=document.createElement("em");txt.appendChild(em);
+          typeChars(em,"your","slow",true,function(){
+            typeChars(txt," heart","slow",true,function(){
+              setTimeout(showS3,2000);
+            });
+          });
+          return;
+        }
+        bsIdx--;
+        mySpan.textContent=c.substring(0,bsIdx);
+        setTimeout(backspace,120+Math.random()*60);
+      }
+      backspace();
+    });
+  });
+}
+
+// S3
+function showS3(){
+  el("followYourWrap").classList.remove("on");
+  el("s3Panel").classList.add("on");
+  el("s3Intro").textContent=T().s3Intro;
+  el("anonField").placeholder=T().anonPH;
+  el("anonSubmit").textContent=T().anonSend;
+  el("s3Back").textContent=T().back;
+  el("anonMsg").textContent="";
+  curScreen=3;
+  stopScheduler();
+  el("bgVideo").classList.remove("on");
+  el("graphArea").classList.remove("on");
+  el("bpmPanel").classList.remove("on");
+  el("sndBtn").classList.remove("on");
+  el("s2").classList.add("hidden");
+}
+
+el("btnOura").addEventListener("click",function(e){
+  e.stopPropagation();
+  el("s3Panel").classList.remove("on");
+  el("ouraPanel").classList.add("on");
+  el("ouraInstructions").textContent=T().ouraInstructions;
+  el("ouraPriv").textContent=T().ouraPriv;
+  el("tokenField").placeholder=T().tokenPH;
+  el("ouraBack").textContent=T().back;
+  el("tokenError").textContent="";
+  el("tokenField").value="";
+});
+
+el("ouraBack").addEventListener("click",function(e){e.stopPropagation();el("ouraPanel").classList.remove("on");el("s3Panel").classList.add("on");});
+el("tokenCancel").addEventListener("click",function(e){e.stopPropagation();el("ouraPanel").classList.remove("on");el("s3Panel").classList.add("on");});
+el("tokenSubmit").addEventListener("click",function(e){
+  e.stopPropagation();var val=el("tokenField").value.trim();
+  if(!val){el("tokenError").textContent=T().tokenErrEmpty;return;}
+  el("tokenError").textContent="";sessionStorage.setItem("fmh_token",val);connectOura(val);
+});
+el("tokenField").addEventListener("keydown",function(e){e.stopPropagation();if(e.key==="Enter")el("tokenSubmit").click();});
+el("s3Back").addEventListener("click",function(e){e.stopPropagation();el("s3Panel").classList.remove("on");returnToS2();});
+
+function returnToS2(){
+  curScreen=2;el("s2").classList.remove("hidden");
+  el("bgVideo").classList.add("on");el("bgVideo").play().catch(function(){});
+  applyVideoRate();el("graphArea").classList.add("on");el("bpmPanel").classList.add("on");el("sndBtn").classList.add("on");el("nav").classList.add("on");
+  drawGraph(activeData);setTimeout(function(){positionBpmPanel();},50);
+  eggStarted=false;el("ynField").value="";
+  nextBeatTime=(isIOS?performance.now()/1000:(audioCtx?audioCtx.currentTime:performance.now()/1000))+0.1;scheduler();
+}
+
+// ANON EMAIL
+el("anonSubmit").addEventListener("click",function(e){
+  e.stopPropagation();var msg=el("anonField").value.trim();
+  if(!msg){el("anonMsg").textContent=lang==="fr"?"Message vide.":"Empty message.";return;}
+  el("anonSubmit").disabled=true;
+  fetch("https://formspree.io/f/mjgzvnlw",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({message:msg,lang:lang})})
+    .then(function(r){el("anonMsg").textContent=r.ok?T().anonSent:T().anonError;el("anonSubmit").disabled=false;el("anonField").value="";})
+    .catch(function(){el("anonMsg").textContent=T().anonError;el("anonSubmit").disabled=false;});
+});
+
+// CONNECT OURA
+function connectOura(token){
+  el("ouraPanel").classList.remove("on");el("transTxt").textContent=T().connecting;el("transMsg").classList.add("on");
+  var d=new Date();d.setDate(d.getDate()-7);var ds=d.toISOString().split("T")[0];
+  fetch("https://api.ouraring.com/v2/usercollection/heartrate?start_datetime="+ds+"T00:00:00&end_datetime="+ds+"T23:59:59",{headers:{"Authorization":"Bearer "+token}})
+    .then(function(r){if(r.status===401||r.status===403)throw new Error("invalid");return r.json();})
+    .then(function(json){
+      if(!json.data||!json.data.length)throw new Error("nodata");
+      var ud=json.data.map(function(p){var d2=new Date(p.timestamp);return{t:d2.getHours()+d2.getMinutes()/60,bpm:p.bpm,src:p.source==="workout"?"workout":p.source==="rest"?"rest":"awake"};})
+        .filter(function(p){return p.t<=NOW_HOUR;}).sort(function(a,b){return a.t-b.t;});
+      if(!ud.length)throw new Error("nodata");
+      activeData=ud;activeBpm=ud[Math.floor(ud.length/2)].bpm;userConnected=true;
+      el("transMsg").classList.remove("on");el("transTxt").textContent=T().connected;el("transMsg").classList.add("on");
+      setTimeout(function(){el("transMsg").classList.remove("on");setTimeout(returnToS2,600);},2000);
+    })
+    .catch(function(err){
+      el("transMsg").classList.remove("on");el("ouraPanel").classList.add("on");
+      el("tokenError").textContent=err.message==="invalid"?T().tokenErrInvalid:T().tokenErrNoData;
+      el("tokenField").value="";
+    });
+}
+
+// SOUND BTN
+el("sndBtn").addEventListener("click",function(e){
+  e.stopPropagation();soundOn=!soundOn;
+  el("sndBtn").innerHTML=soundOn?"&#128265;":"&#128263;";
+  el("sndBtn").style.opacity=soundOn?"0.6":"0.35";
+});
+
+// NAV
+el("navAbout").addEventListener("click",function(e){e.preventDefault();e.stopPropagation();el("aboutText").textContent=T().aboutText;el("about").classList.add("on");});
+el("navContact").addEventListener("click",function(e){e.preventDefault();e.stopPropagation();el("contact").classList.add("on");});
+el("aboutClose").addEventListener("click",function(e){e.stopPropagation();el("about").classList.remove("on");});
+el("contactClose").addEventListener("click",function(e){e.stopPropagation();el("contact").classList.remove("on");});
+el("nav").addEventListener("click",function(e){e.stopPropagation();});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){el("about").classList.remove("on");el("contact").classList.remove("on");}});
+
+window.addEventListener("resize",function(){
+  W=window.innerWidth;H=window.innerHeight;
+  if(curScreen===2){drawGraph(activeData);setTimeout(positionBpmPanel,50);}
+});
+</script>
+</body>
+</html>
